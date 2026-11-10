@@ -37,6 +37,11 @@ try {
         if ($null -eq $shortcut) { $shortcut = $shell.CreateShortcut($linkPath) }
         $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
         $shortcut.Arguments = '-NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $scriptPath + '"'
+        $executable = Join-Path $PSScriptRoot 'DisplayFlip.exe'
+        if (Test-Path -LiteralPath $executable) {
+            $shortcut.TargetPath = $executable
+            $shortcut.Arguments = ''
+        }
         $shortcut.WorkingDirectory = $PSScriptRoot
         $shortcut.Description = $marker
         $shortcut.WindowStyle = 7

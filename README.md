@@ -4,6 +4,10 @@ A small Windows system tray app for switching monitor combinations with a menu o
 
 ## Requirements
 
+For the packaged app, extract the entire ZIP to a writable folder and run **DisplayFlip.exe**. Keep the files together. DisplayConfig is bundled, and personal configuration is generated on first launch. Double-click the tray icon to open settings.
+
+The executable is a console-free C# launcher for the PowerShell app. Windows PowerShell 5.1 is still required. Module installation below is only needed when running from source or building a package.
+
 - Windows with Windows PowerShell 5.1 and a desktop session.
 - The DisplayConfig module installed for the current user:
 
@@ -49,7 +53,7 @@ An optional `Scale` value on each monitor sets its scaling percentage at startup
 
 In **Settings...**, each preset has a **Visible** checkbox. Clear it and click **Save & Apply** to hide the preset from the tray and disable its hotkey without deleting it. Rechecking it restores both. Existing presets are visible by default; manual configurations can set `Visible = $false` on a preset.
 
-Choose **Settings...** in the tray to edit preset labels, monitor combinations, hotkeys, and scaling. Click **Save & Apply** to save the file and refresh the tray and shortcuts immediately, without restarting. Leave scaling blank to preserve it. Monitor keys and identities are read-only in this window. Invalid settings are rejected; unavailable hotkeys are reported and those presets remain accessible from the tray. Each save preserves the previous file in a uniquely named `.bak` file. Generated files include commented editing instructions. The tray checks the active combination whenever you open the menu, considering configured monitors only.
+Choose **Settings...** in the tray to edit preset labels, hotkeys, visibility, and scaling. Click **Save & Apply** to save the file and refresh the tray and shortcuts immediately, without restarting. Leave scaling blank to preserve it. Monitor keys, identities, and preset display combinations are read-only in this window. Invalid settings are rejected; unavailable hotkeys are reported and those presets remain accessible from the tray. Each save preserves the previous file in a uniquely named `.bak` file. Generated files include commented editing instructions. The tray checks the active combination whenever you open the menu, considering configured monitors only.
 
 Personal `Monitors.psd1` files are ignored by Git and excluded from source archives. The copy already tracked in this repository must still be untracked before publishing the repository itself; ignore rules do not untrack existing files. Distribute `Monitors.Example.psd1` instead.
 
@@ -83,6 +87,12 @@ Monitor names are arbitrary keys shared by `Monitors` and preset `Names`. Preset
 Toggle **Open at startup** in the tray to enable or disable launching DisplayFlip at sign-in for your account. The checkmark shows whether the startup shortcut exists. Changes take effect immediately without restarting the app. You can also use `Enable-Autostart.cmd` and `Disable-Autostart.cmd`. Administrator access is not required. Disabled shortcuts are preserved under `%LOCALAPPDATA%\DisplayFlip\DisabledStartup`.
 
 The startup shortcut points to the current application folder. If you move the folder, enable autostart again to update it.
+
+Packaged copies use `DisplayFlip.exe` for startup; source copies use PowerShell.
+
+## Build the executable
+
+Run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-DisplayFlip.ps1`. The build uses the Windows .NET Framework compiler and the installed DisplayConfig module. Each build creates a new folder and ZIP under `dist`, excluding personal settings and backups. There is no automatic release workflow yet.
 
 ### Upgrading from MonitorTray
 

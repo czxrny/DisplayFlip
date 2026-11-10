@@ -1,3 +1,5 @@
+param([string]$SettingsPreview)
+
 $ErrorActionPreference = 'Stop'
 $tokens = $null; $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot\DisplayFlip.ps1", [ref]$tokens, [ref]$errors)
@@ -119,9 +121,24 @@ Add-Type -AssemblyName System.Windows.Forms
 $settingsFunction = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-DisplayFlipSettings' }, $false).Extent.Text
 $settingsFunction = $settingsFunction.Replace('function Show-DisplayFlipSettings', 'function Test-SettingsConstruction').Replace('[void]$form.ShowDialog()', @'
 if ($monitors.Rows.Count -ne $script:config.Monitors.Count) { throw 'Settings monitor rows are incomplete.' }
-if ($presets.Rows.Count -ne $script:config.Presets.Count + 1) { throw 'Settings preset rows are incomplete.' }
+if ($presets.Rows.Count -ne $script:config.Presets.Count -or $presets.AllowUserToAddRows) { throw 'Settings should not contain an automatic blank row.' }
+foreach ($grid in @($monitors, $presets)) {
+    if ($grid.AllowUserToResizeColumns -or $grid.AllowUserToResizeRows -or $grid.ColumnHeadersHeightSizeMode -ne 'DisableResizing') { throw 'Settings grid resizing should be disabled.' }
+}
 if ($save.Text -ne 'Save & Apply') { throw 'Save action is missing.' }
 if ($presets.Columns['Visible'] -isnot [Windows.Forms.DataGridViewCheckBoxColumn]) { throw 'Preset visibility checkbox is missing.' }
+if (-not $presets.Columns['Names'].ReadOnly) { throw 'Display combinations should be read-only.' }
+if ($SettingsPreview) {
+    $form.Show()
+    [Windows.Forms.Application]::DoEvents()
+    $form.PerformLayout()
+    $bitmap = [Drawing.Bitmap]::new($form.Width, $form.Height)
+    try {
+        $form.DrawToBitmap($bitmap, [Drawing.Rectangle]::new(0, 0, $form.Width, $form.Height))
+        $bitmap.Save($SettingsPreview)
+    }
+    finally { $bitmap.Dispose() }
+}
 '@)
 Invoke-Expression $settingsFunction
 Test-SettingsConstruction

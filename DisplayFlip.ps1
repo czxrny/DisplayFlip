@@ -3,6 +3,10 @@
 param([switch]$Diagnostics)
 
 $ErrorActionPreference = 'Stop'
+$bundledModules = Join-Path $PSScriptRoot 'Modules'
+if (Test-Path -LiteralPath $bundledModules) {
+    $env:PSModulePath = $bundledModules + [IO.Path]::PathSeparator + $env:PSModulePath
+}
 
 if ($Diagnostics) {
     Import-Module DisplayConfig -ErrorAction Stop
@@ -266,22 +270,32 @@ function Set-MonitorPreset {
 
 function Show-DisplayFlipSettings {
     $form = [Windows.Forms.Form]::new()
-    $form.Text = 'DisplayFlip settings'
-    $form.Size = [Drawing.Size]::new(850, 600)
+    $form.Text = 'DisplayFlip'
+    $form.ClientSize = [Drawing.Size]::new(900, 690)
+    $form.BackColor = [Drawing.Color]::FromArgb(245, 246, 248)
+    $form.Font = [Drawing.Font]::new('Segoe UI', 10)
     $form.MinimumSize = $form.Size
     $form.StartPosition = 'CenterScreen'
     $layout = [Windows.Forms.TableLayoutPanel]::new()
     $layout.Dock = 'Fill'
     $layout.ColumnCount = 1
-    $layout.RowCount = 5
-    foreach ($height in @(45, 150, 40, 230, 45)) {
+    $layout.Padding = [Windows.Forms.Padding]::new(28, 18, 28, 18)
+    $layout.RowCount = 6
+    foreach ($height in @(75, 48, 145, 48, 255, 55)) {
         [void]$layout.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::Absolute, $height))
     }
     $form.Controls.Add($layout)
+    $heading = [Windows.Forms.Label]::new()
+    $heading.Text = "DisplayFlip`nYour displays, your way."
+    $heading.Font = [Drawing.Font]::new('Segoe UI', 17)
+    $heading.ForeColor = [Drawing.Color]::FromArgb(38, 111, 108)
+    $heading.Dock = 'Fill'
+    $layout.Controls.Add($heading, 0, 0)
     $help = [Windows.Forms.Label]::new()
-    $help.Text = 'Monitors: leave Scale blank to preserve scaling. Presets: enter monitor keys separated by commas. Hotkeys: Ctrl/Alt/Shift/Win + A-Z or F1-F24.'
+    $help.Text = 'Monitors: leave Scale blank to preserve scaling. Display combinations are read-only. Hotkeys: Ctrl/Alt/Shift/Win + A-Z or F1-F24.'
     $help.Dock = 'Fill'
-    $layout.Controls.Add($help, 0, 0)
+    $help.ForeColor = [Drawing.Color]::FromArgb(101, 112, 127)
+    $layout.Controls.Add($help, 0, 1)
     $monitors = [Windows.Forms.DataGridView]::new()
     $monitors.Dock = 'Fill'
     $monitors.AllowUserToAddRows = $false
@@ -294,15 +308,19 @@ function Show-DisplayFlipSettings {
         $monitor = $script:config.Monitors[$name]
         [void]$monitors.Rows.Add([object[]]@($name, $monitor.Identity, $monitor.Scale))
     }
-    $layout.Controls.Add($monitors, 0, 1)
+    $layout.Controls.Add($monitors, 0, 2)
     $presetHelp = [Windows.Forms.Label]::new()
-    $presetHelp.Text = 'Edit preset names, combinations, and shortcuts below. Use the last row to add a preset; select a row and press Delete to remove it.'
+    $presetHelp.Text = 'Edit preset names, shortcuts, and visibility below. Display combinations are read-only.'
     $presetHelp.Dock = 'Fill'
-    $layout.Controls.Add($presetHelp, 0, 2)
+    $presetHelp.ForeColor = $help.ForeColor
+    $layout.Controls.Add($presetHelp, 0, 3)
     $presets = [Windows.Forms.DataGridView]::new()
+    $presets.AllowUserToAddRows = $false
     $presets.Dock = 'Fill'
     $presets.AutoSizeColumnsMode = 'Fill'
     foreach ($column in @('Label', 'Names', 'Hotkey')) { [void]$presets.Columns.Add($column, $column) }
+    $presets.Columns['Names'].ReadOnly = $true
+    $presets.Columns['Names'].HeaderText = 'Displays'
     $visibleColumn = [Windows.Forms.DataGridViewCheckBoxColumn]::new()
     $visibleColumn.Name = 'Visible'
     $visibleColumn.HeaderText = 'Visible'
@@ -311,12 +329,42 @@ function Show-DisplayFlipSettings {
     foreach ($preset in $script:config.Presets) {
         [void]$presets.Rows.Add([object[]]@($preset.Label, ($preset.Names -join ', '), $preset.Hotkey, ($preset.Visible -ne $false)))
     }
-    $layout.Controls.Add($presets, 0, 3)
+    $layout.Controls.Add($presets, 0, 4)
+    foreach ($grid in @($monitors, $presets)) {
+        $grid.AllowUserToResizeColumns = $false
+        $grid.AllowUserToResizeRows = $false
+        $grid.BackgroundColor = [Drawing.Color]::White
+        $grid.BorderStyle = 'None'
+        $grid.RowHeadersVisible = $false
+        $grid.EnableHeadersVisualStyles = $false
+        $grid.ColumnHeadersDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(229, 234, 240)
+        $grid.ColumnHeadersDefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(66, 80, 99)
+        $grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = $grid.ColumnHeadersDefaultCellStyle.BackColor
+        $grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = $grid.ColumnHeadersDefaultCellStyle.ForeColor
+        $grid.ColumnHeadersHeightSizeMode = 'DisableResizing'
+        $grid.DefaultCellStyle.BackColor = [Drawing.Color]::White
+        $grid.DefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(44, 55, 71)
+        $grid.AlternatingRowsDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(247, 249, 251)
+        $grid.DefaultCellStyle.SelectionBackColor = [Drawing.Color]::FromArgb(214, 235, 232)
+        $grid.DefaultCellStyle.SelectionForeColor = [Drawing.Color]::Black
+        $grid.GridColor = [Drawing.Color]::FromArgb(232, 236, 241)
+        $grid.RowTemplate.Height = 30
+        $grid.ColumnHeadersHeight = 32
+    }
     $save = [Windows.Forms.Button]::new()
     $save.Text = 'Save & Apply'
     $save.UseMnemonic = $false
     $save.AutoSize = $true
-    $layout.Controls.Add($save, 0, 4)
+    $save.BackColor = [Drawing.Color]::FromArgb(38, 111, 108)
+    $save.ForeColor = [Drawing.Color]::White
+    $save.FlatStyle = 'Flat'
+    $save.Padding = [Windows.Forms.Padding]::new(16, 6, 16, 6)
+    $save.Anchor = 'Right'
+    $actions = [Windows.Forms.FlowLayoutPanel]::new()
+    $actions.Dock = 'Fill'
+    $actions.FlowDirection = 'RightToLeft'
+    $actions.Controls.Add($save)
+    $layout.Controls.Add($actions, 0, 5)
     $save.Add_Click({
         try {
             [void]$monitors.EndEdit()
@@ -485,6 +533,7 @@ try {
     $script:tray.Text = 'DisplayFlip'
     $script:tray.ContextMenuStrip = $script:menu
     $script:tray.Visible = $true
+    $script:tray.Add_DoubleClick({ Show-DisplayFlipSettings })
     try { Set-MonitorScale -Config $script:config -DisplayNames @($script:config.Monitors.Keys) }
     catch {
         [void][Windows.Forms.MessageBox]::Show(('Could not apply configured display scaling: ' + $_.Exception.Message), 'DisplayFlip', 'OK', 'Warning')
