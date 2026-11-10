@@ -15,13 +15,15 @@ Install-Module DisplayConfig -Scope CurrentUser
 
 Before setting up the app, connect and activate all displays you want to use in Windows Settings > System > Display. Keep them active when you first launch DisplayFlip so it can discover their names and create the presets.
 
-Run `Start-DisplayFlip.cmd` and right-click the tray icon. The default `AutoConfigure = $true` reads `Get-DisplayInfo` objects at startup. No manual monitor configuration is required. After setup, use the presets to switch displays on and off.
+Run `Start-DisplayFlip.cmd` and right-click the tray icon. When `Monitors.psd1` exists, the app loads it and populates the tray from those settings. Only when the file is absent does the app discover displays and save the generated settings to `Monitors.psd1`. Later launches load that file without rediscovering presets. No manual monitor configuration is required. After setup, use the presets to switch displays on and off.
 
 Each display gets an individual preset and Ctrl+Alt+F1, F2, etc. An additional "All displays" preset gets the next hotkey. Labels include a number to distinguish identical names; unnamed panels use "Display". Full device paths identify monitors independently of their names. Numbering follows device-path order and can change when hardware or ports change. Restart after connecting new hardware. Beyond 23 displays, additional individual presets are menu-only; F24 selects all displays.
 
-Automatic configuration leaves scaling unchanged. Run `Show-Diagnostics.cmd` to inspect detected displays. To customize presets, replace `Monitors.psd1` with an edited copy of `Monitors.Example.psd1`, which preserves the original setup. Custom mode supports arbitrary labels, combinations, hotkeys, and scaling.
+Automatic configuration leaves scaling unchanged. Run `Show-Diagnostics.cmd` to inspect detected displays. To customize presets, optionally use an edited copy of `Monitors.Example.psd1` as `Monitors.psd1`. The example preserves the original setup. Custom mode supports arbitrary labels, combinations, hotkeys, and scaling.
 
-Keep `DisplayFlip.ps1`, `DisplayFlip.Hotkeys.cs`, `DisplayFlip.Configuration.ps1`, `Monitors.psd1`, and `icon.ico` together. The launchers and `Autostart.ps1` should remain in the same folder. `icon.png` is the source artwork for the tray icon.
+The tray also lists every combination of two or more displays as menu-only presets, keeping the individual-display and "All displays" hotkeys unchanged. Three displays produce seven choices: three individual displays, three pairs, and all displays. An all-off preset is never generated. For more than eight displays, only individual displays and "All displays" are generated to keep the menu manageable; define custom combinations in `Monitors.psd1` for larger setups.
+
+Keep `DisplayFlip.ps1`, `DisplayFlip.Hotkeys.cs`, and `icon.ico` together. The launchers and `Autostart.ps1` should remain in the same folder. `icon.png` is the source artwork for the tray icon.
 
 ## Example custom presets and hotkeys
 
@@ -45,7 +47,11 @@ An optional `Scale` value on each monitor sets its scaling percentage at startup
 
 ## Configuration
 
-All monitor and preset settings live in `Monitors.psd1`. Restart DisplayFlip after editing it.
+Edit `Monitors.psd1` in a text editor to customize your setup. In `Monitors`, change monitor identities and optional `Scale` percentages. In `Presets`, change `Label` for the tray text, `Names` for the monitors to enable, and `Hotkey` for the shortcut. Keep the monitor keys and preset `Names` consistent. Save the file, exit DisplayFlip, and launch it again to apply your changes.
+
+You can use `Monitors.Example.psd1` as a starting point. The settings saved on first launch can be edited in the same way. The application folder must be writable to save the file.
+
+An existing `Monitors.psd1` is authoritative: it must contain valid Monitors and Presets tables. Empty or invalid files report an error instead of triggering discovery. Move the file out of the application folder to use automatic discovery. Restart DisplayFlip after editing it.
 
 ```powershell
 @{

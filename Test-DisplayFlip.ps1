@@ -1,5 +1,8 @@
-﻿$ErrorActionPreference = 'Stop'
-. "$PSScriptRoot\DisplayFlip.Configuration.ps1"
+$ErrorActionPreference = 'Stop'
+$tokens = $null; $errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot\DisplayFlip.ps1", [ref]$tokens, [ref]$errors)
+if ($errors) { throw ($errors | Out-String) }
+$ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
 $script:config = Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1"
 if ($script:config.Presets.Count -ne 5) { throw 'Unexpected default presets.' }
 $binding = ConvertTo-DisplayFlipHotkey 'Shift+Ctrl+F24'
@@ -9,10 +12,6 @@ foreach ($value in @('Ctrl+Ctrl+F1', 'Alt+X', 'Ctrl+F25')) {
     try { ConvertTo-DisplayFlipHotkey $value | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw "Invalid hotkey accepted: $value" }
 }
-$tokens = $null; $errors = $null
-$ast = [Management.Automation.Language.Parser]::ParseFile("$PSScriptRoot\DisplayFlip.ps1", [ref]$tokens, [ref]$errors)
-if ($errors) { throw ($errors | Out-String) }
-$ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
 function Get-DisplayInfo {
     [pscustomobject]@{ DevicePath = 'DISPLAY#CND3CF8#test'; DisplayId = 1; Active = $true }
     [pscustomobject]@{ DevicePath = 'DISPLAY#HPN375A#test'; DisplayId = 2; Active = $true }
@@ -38,7 +37,7 @@ $automatic = New-DisplayFlipConfig -Displays @(
     [pscustomobject]@{ DevicePath = 'path-a'; DisplayName = 'Same' },
     [pscustomobject]@{ DevicePath = 'path-c'; DisplayName = '' }
 )
-if ($automatic.Monitors.Count -ne 3 -or $automatic.Presets.Count -ne 4) { throw 'Automatic presets are incomplete.' }
+if ($automatic.Monitors.Count -ne 3 -or $automatic.Presets.Count -ne 7) { throw 'Automatic presets are incomplete.' }
 if ($automatic.Monitors.Display1.Identity -ne 'path-a') { throw 'Device paths were not assigned deterministically.' }
 if ($automatic.Presets[0].Label -ne 'Same (1)' -or $automatic.Presets[1].Label -ne 'Same (2)' -or $automatic.Presets[2].Label -ne 'Display (3)') { throw 'Ambiguous or empty display names were not handled.' }
 if ($automatic.Presets[3].Names.Count -ne 3 -or $automatic.Presets[3].Hotkey -ne 'Ctrl+Alt+F4') { throw 'Incorrect all-displays preset.' }
@@ -50,15 +49,39 @@ foreach ($displays in @(@(), @([pscustomobject]@{ DevicePath = 'same' }, [pscust
 }
 $single = New-DisplayFlipConfig -Displays @([pscustomobject]@{ DevicePath = 'single'; DisplayName = 'Desk' })
 if ($single.Presets.Count -ne 1) { throw 'Single display should have one preset.' }
+foreach ($count in @(2, 3, 4, 8, 9)) {
+    $displays = @(1..$count | ForEach-Object { [pscustomobject]@{ DevicePath = "path-$_"; DisplayName = 'Same' } })
+    $generated = New-DisplayFlipConfig -Displays $displays
+    $expectedCount = if ($count -le 8) { [int][Math]::Pow(2, $count) - 1 } else { $count + 1 }
+    if ($generated.Presets.Count -ne $expectedCount) { throw "Incorrect combination count for $count displays." }
+    $unique = @($generated.Presets | ForEach-Object { ($_.Names | Sort-Object) -join ',' } | Select-Object -Unique)
+    if ($unique.Count -ne $expectedCount) { throw 'Duplicate combinations generated.' }
+    foreach ($preset in $generated.Presets) {
+        if ($preset.Names.Count -eq 0) { throw 'All-off preset generated.' }
+        if ($preset.Names.Count -gt 1 -and $preset.Names.Count -lt $count -and $preset.ContainsKey('Hotkey')) { throw 'Combination must not override existing hotkeys.' }
+    }
+}
+$savedPath = Join-Path ([IO.Path]::GetTempPath()) ('DisplayFlip-' + [Guid]::NewGuid().ToString('N') + '.psd1')
+if ((Get-DisplayFlipConfig -Path $savedPath).Monitors.Count -ne 3) { throw 'Missing config did not use discovery.' }
+if (-not (Test-Path -LiteralPath $savedPath)) { throw 'Discovered config was not saved.' }
+$savedText = [IO.File]::ReadAllText($savedPath)
+function Get-DisplayInfo { throw 'Discovery must not run when a configuration file exists.' }
+if ((Get-DisplayFlipConfig -Path $savedPath).Presets.Count -ne 7) { throw 'Saved configuration did not round-trip.' }
+if ([IO.File]::ReadAllText($savedPath) -ne $savedText) { throw 'Existing configuration was modified.' }
+if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1").Presets.Count -ne 5) { throw 'Existing config was not loaded.' }
 function Import-PowerShellDataFile { param($LiteralPath, $ErrorAction) return $script:invalidConfig }
-$script:invalidConfig = @{ AutoConfigure = $true }
-if ((Get-DisplayFlipConfig).Monitors.Count -ne 3) { throw 'Automatic configuration was not loaded.' }
+foreach ($value in @(@{}, @{ AutoConfigure = $true })) {
+    $script:invalidConfig = $value
+    $rejected = $false
+    try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Invalid existing configuration accepted.' }
+}
 $script:invalidConfig = @{ Monitors = @{ Desk = @{ Identity = 'test' } }; Presets = @(@{ Label = 'Bad'; Names = @('Missing') }) }
 $rejected = $false
-try { Get-DisplayFlipConfig | Out-Null } catch { $rejected = $true }
+try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Unknown monitor accepted.' }
 $script:invalidConfig.Presets = @(@{ Label = 'A'; Names = @('Desk'); Hotkey = 'Ctrl+Alt+F1' }, @{ Label = 'B'; Names = @('Desk'); Hotkey = 'Alt+Ctrl+F1' })
 $rejected = $false
-try { Get-DisplayFlipConfig | Out-Null } catch { $rejected = $true }
+try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Duplicate hotkey accepted.' }
 'PASS: discovery, configuration validation, hotkeys, mocked switching, scaling, and disconnected displays.'
