@@ -47,6 +47,10 @@ An optional `Scale` value on each monitor sets its scaling percentage at startup
 
 ## Configuration
 
+Choose **Edit configuration** in the tray to open `Monitors.psd1` in Notepad. Generated files include commented editing instructions. The tray checks the active combination whenever you open the menu, considering configured monitors only.
+
+Personal `Monitors.psd1` files are ignored by Git and excluded from source archives. The copy already tracked in this repository must still be untracked before publishing the repository itself; ignore rules do not untrack existing files. Distribute `Monitors.Example.psd1` instead.
+
 Edit `Monitors.psd1` in a text editor to customize your setup. In `Monitors`, change monitor identities and optional `Scale` percentages. In `Presets`, change `Label` for the tray text, `Names` for the monitors to enable, and `Hotkey` for the shortcut. Keep the monitor keys and preset `Names` consistent. Save the file, exit DisplayFlip, and launch it again to apply your changes.
 
 You can use `Monitors.Example.psd1` as a starting point. The settings saved on first launch can be edited in the same way. The application folder must be writable to save the file.

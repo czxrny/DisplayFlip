@@ -65,6 +65,19 @@ $savedPath = Join-Path ([IO.Path]::GetTempPath()) ('DisplayFlip-' + [Guid]::NewG
 if ((Get-DisplayFlipConfig -Path $savedPath).Monitors.Count -ne 3) { throw 'Missing config did not use discovery.' }
 if (-not (Test-Path -LiteralPath $savedPath)) { throw 'Discovered config was not saved.' }
 $savedText = [IO.File]::ReadAllText($savedPath)
+if ($savedText -notmatch '# Presets:' -or $savedText -notmatch '# Hotkey') { throw 'Generated configuration lacks editing instructions.' }
+$checkConfig = @{ Monitors = @{ A = @{ Identity = 'path-a' }; B = @{ Identity = 'path-b' } } }
+$items = @(
+    [pscustomobject]@{ Tag = @{ Names = @('A') }; Checked = $false },
+    [pscustomobject]@{ Tag = @{ Names = @('A', 'B') }; Checked = $true }
+)
+Update-DisplayFlipChecks -Items $items -Config $checkConfig -Displays @(
+    [pscustomobject]@{ DevicePath = 'path-a'; Active = $true },
+    [pscustomobject]@{ DevicePath = 'path-b'; Active = $false }
+)
+if (-not $items[0].Checked -or $items[1].Checked) { throw 'Active preset checkmarks are incorrect.' }
+Update-DisplayFlipChecks -Items $items -Config $checkConfig -Displays @()
+if ($items[0].Checked -or $items[1].Checked) { throw 'Stale checkmarks were retained.' }
 function Get-DisplayInfo { throw 'Discovery must not run when a configuration file exists.' }
 if ((Get-DisplayFlipConfig -Path $savedPath).Presets.Count -ne 7) { throw 'Saved configuration did not round-trip.' }
 if ([IO.File]::ReadAllText($savedPath) -ne $savedText) { throw 'Existing configuration was modified.' }

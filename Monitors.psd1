@@ -1,4 +1,8 @@
-﻿@{
+﻿# Save changes, then exit and restart DisplayFlip.
+# Monitors: Identity identifies the display; optional Scale sets its scaling percentage.
+# Presets: Label is tray text; Names lists monitor keys to enable; others are disabled.
+# Hotkey is optional: Ctrl, Alt, Shift, Win plus F1-F24. Keep Names consistent with monitor keys.
+@{
     Monitors = @{
         OLED = @{ Identity = 'DISPLAY#CND3CF8#' }
         LCD = @{ Identity = 'DISPLAY#HPN375A#'; Scale = 100 }

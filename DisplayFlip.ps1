@@ -72,7 +72,14 @@ function Get-DisplayFlipConfig {
 function Save-DisplayFlipConfig {
     param([hashtable]$Config, [string]$Path)
 
-    $lines = @('@{', '    Monitors = @{')
+    $lines = @(
+        '# DisplayFlip settings: save this file, then exit and restart the app to apply changes.'
+        '# Monitors: Identity is the device path; add Scale = 100 (or another supported percentage) to set scaling.'
+        '# Presets: Label is tray text; Names lists monitor keys to enable; other configured monitors are disabled.'
+        '# Hotkey is optional: Ctrl, Alt, Shift, Win plus F1-F24, for example Ctrl+Alt+F1.'
+        '# Keep monitor keys and preset Names consistent. Every preset must enable at least one monitor.'
+        '@{', '    Monitors = @{'
+    )
     foreach ($name in ($Config.Monitors.Keys | Sort-Object)) {
         $identity = $Config.Monitors[$name].Identity.Replace("'", "''")
         $lines += "        $name = @{ Identity = '$identity' }"
@@ -179,6 +186,26 @@ function Set-MonitorScale {
         }
     }
 }
+function Update-DisplayFlipChecks {
+    param($Items, [hashtable]$Config, [object[]]$Displays)
+
+    $activeNames = @()
+    $ambiguous = $false
+    foreach ($name in $Config.Monitors.Keys) {
+        $identity = $Config.Monitors[$name].Identity
+        $matches = @($Displays | Where-Object {
+            $_.DevicePath -and $_.DevicePath.IndexOf($identity, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+        if ($matches.Count -gt 1) { $ambiguous = $true }
+        if ($matches.Count -eq 1 -and $matches[0].Active) { $activeNames += $name }
+    }
+    foreach ($item in $Items) {
+        if ($item.Tag -isnot [hashtable]) { continue }
+        $names = @($item.Tag.Names)
+        $item.Checked = -not $ambiguous -and $names.Count -eq $activeNames.Count -and @($names | Where-Object { $activeNames -notcontains $_ }).Count -eq 0
+    }
+}
+
 function Set-MonitorPreset {
     param([hashtable]$Preset)
 
@@ -254,6 +281,26 @@ try {
         [void]$script:menu.Items.Add($item)
     }
     [void]$script:menu.Items.Add([Windows.Forms.ToolStripSeparator]::new())
+    $editItem = [Windows.Forms.ToolStripMenuItem]::new('Edit configuration')
+    $editItem.Add_Click({
+        try {
+            Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\notepad.exe') -ArgumentList ('"{0}"' -f (Join-Path $PSScriptRoot 'Monitors.psd1'))
+        }
+        catch {
+            [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip', 'OK', 'Warning')
+        }
+    })
+    [void]$script:menu.Items.Add($editItem)
+    $script:menu.Add_Opening({
+        try {
+            Update-DisplayFlipChecks -Items $script:menu.Items -Config $script:config -Displays @(Get-DisplayInfo -ErrorAction Stop)
+        }
+        catch {
+            foreach ($item in $script:menu.Items) {
+                if ($item.Tag -is [hashtable]) { $item.Checked = $false }
+            }
+        }
+    })
     $exitItem = [Windows.Forms.ToolStripMenuItem]::new('Exit DisplayFlip')
     $exitItem.Add_Click({ [Windows.Forms.Application]::ExitThread() })
     [void]$script:menu.Items.Add($exitItem)
