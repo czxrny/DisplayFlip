@@ -25,27 +25,34 @@ $script:menu = $null
 $script:hotkeys = $null
 $script:icon = $null
 
-function Set-LcdScale {
-    $config = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'Monitors.psd1') -ErrorAction Stop
-    $identity = [string]$config['LCD']
-    if ([string]::IsNullOrWhiteSpace($identity)) { throw 'Missing LCD identifier in Monitors.psd1.' }
-    $matches = @(Get-DisplayInfo -ErrorAction Stop | Where-Object {
-        $_.DevicePath -and $_.DevicePath.IndexOf($identity, [StringComparison]::OrdinalIgnoreCase) -ge 0
-    })
-    if ($matches.Count -gt 1) { throw 'Multiple displays match LCD. Scaling was not changed.' }
-    if ($matches.Count -eq 1 -and $matches[0].Active) {
-        Set-DisplayScale -DisplayId ([uint32]$matches[0].DisplayId) -Scale 100 -ErrorAction Stop
+. (Join-Path $PSScriptRoot 'DisplayFlip.Configuration.ps1')
+
+function Set-MonitorScale {
+    param([hashtable]$Config, [string[]]$DisplayNames)
+
+    $info = @(Get-DisplayInfo -ErrorAction Stop)
+    foreach ($name in $DisplayNames) {
+        $monitor = $Config.Monitors[$name]
+        if (-not $monitor.ContainsKey('Scale')) { continue }
+        $matches = @($info | Where-Object {
+            $_.DevicePath -and $_.DevicePath.IndexOf($monitor.Identity, [StringComparison]::OrdinalIgnoreCase) -ge 0
+        })
+        if ($matches.Count -gt 1) { throw "Multiple displays match $name. Scaling was not changed for this monitor." }
+        if ($matches.Count -eq 1 -and $matches[0].Active) {
+            Set-DisplayScale -DisplayId ([uint32]$matches[0].DisplayId) -Scale $monitor.Scale -ErrorAction Stop
+        }
     }
 }
 function Set-MonitorPreset {
-    param([string[]]$DisplayNames)
+    param([hashtable]$Preset)
 
-    $config = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'Monitors.psd1') -ErrorAction Stop
+    $config = $script:config
+    $DisplayNames = [string[]]$Preset.Names
     $info = @(Get-DisplayInfo -ErrorAction Stop)
     $resolved = @{}
     $usedIds = @{}
-    foreach ($name in @('OLED', 'LCD', 'LAPTOP')) {
-        $identity = [string]$config[$name]
+    foreach ($name in $config.Monitors.Keys) {
+        $identity = [string]$config.Monitors[$name].Identity
         if ([string]::IsNullOrWhiteSpace($identity)) { throw "Missing identifier for $name in Monitors.psd1." }
         $matches = @($info | Where-Object {
             $_.DevicePath -and $_.DevicePath.IndexOf($identity, [StringComparison]::OrdinalIgnoreCase) -ge 0
@@ -71,7 +78,7 @@ function Set-MonitorPreset {
     else {
         Enable-Display -DisplayId $idsToEnable -ErrorAction Stop
     }
-    if ($DisplayNames -contains 'LCD') { Set-LcdScale }
+    Set-MonitorScale -Config $config -DisplayNames $DisplayNames
 }
 
 try {
@@ -79,31 +86,30 @@ try {
     [Windows.Forms.Application]::EnableVisualStyles()
     $script:menu = [Windows.Forms.ContextMenuStrip]::new()
 
-    $presets = @(
-        @{ Label = 'OLED'; Names = @('OLED') },
-        @{ Label = 'LCD'; Names = @('LCD') },
-        @{ Label = 'OLED + LCD'; Names = @('OLED', 'LCD') },
-        @{ Label = 'Laptop + LCD'; Names = @('LCD', 'LAPTOP') },
-        @{ Label = 'All displays'; Names = @('OLED', 'LCD', 'LAPTOP') }
-    )
+    $script:config = Get-DisplayFlipConfig
+    $presets = $script:config.Presets
     Add-Type -Path (Join-Path $PSScriptRoot 'DisplayFlip.Hotkeys.cs') -ReferencedAssemblies System.Windows.Forms
     $script:hotkeys = [DisplayFlip.HotkeyWindow]::new()
     $hotkeyId = 0
     $hotkeyErrors = @()
     foreach ($preset in $presets) {
         $hotkeyId++
-        $text = '{0} (Ctrl+Alt+F{1})' -f $preset.Label, $hotkeyId
-        try { $script:hotkeys.Register($hotkeyId, 3, (111 + $hotkeyId)) }
-        catch {
-            $text = $preset.Label + ' (shortcut unavailable)'
-            $hotkeyErrors += 'Ctrl+Alt+F' + $hotkeyId + ': ' + $_.Exception.Message
+        $text = $preset.Label
+        if (-not [string]::IsNullOrWhiteSpace($preset.Hotkey)) {
+            $binding = ConvertTo-DisplayFlipHotkey $preset.Hotkey
+            $text = '{0} ({1})' -f $preset.Label, $preset.Hotkey
+            try { $script:hotkeys.Register($hotkeyId, $binding.Modifiers, $binding.Key) }
+            catch {
+                $text = $preset.Label + ' (shortcut unavailable)'
+                $hotkeyErrors += $preset.Hotkey + ': ' + $_.Exception.Message
+            }
         }
         $item = [Windows.Forms.ToolStripMenuItem]::new($text)
-        $item.Tag = $preset.Names
+        $item.Tag = $preset
         $item.Add_Click({
             param($sender, $eventArgs)
             try {
-                Set-MonitorPreset -DisplayNames ([string[]]$sender.Tag)
+                Set-MonitorPreset -Preset $sender.Tag
             }
             catch {
                 [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip', 'OK', 'Warning')
@@ -129,9 +135,9 @@ try {
     $script:tray.Text = 'DisplayFlip'
     $script:tray.ContextMenuStrip = $script:menu
     $script:tray.Visible = $true
-    try { Set-LcdScale }
+    try { Set-MonitorScale -Config $script:config -DisplayNames @($script:config.Monitors.Keys) }
     catch {
-        [void][Windows.Forms.MessageBox]::Show(('Could not set LCD scaling to 100%: ' + $_.Exception.Message), 'DisplayFlip', 'OK', 'Warning')
+        [void][Windows.Forms.MessageBox]::Show(('Could not apply configured display scaling: ' + $_.Exception.Message), 'DisplayFlip', 'OK', 'Warning')
     }
     [Windows.Forms.Application]::Run()
 }
