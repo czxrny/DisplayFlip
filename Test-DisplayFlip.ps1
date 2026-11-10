@@ -65,6 +65,8 @@ foreach ($count in @(2, 3, 4, 8, 9)) {
     foreach ($preset in $generated.Presets) {
         if ($preset.Names.Count -eq 0) { throw 'All-off preset generated.' }
         if ($preset.Names.Count -gt 1 -and $preset.Names.Count -lt $count -and $preset.ContainsKey('Hotkey')) { throw 'Combination must not override existing hotkeys.' }
+        if ($preset.Names.Count -gt 1 -and $preset.Names.Count -lt $count -and $preset.Visible -ne $false) { throw 'Extra combinations should start hidden.' }
+        if (($preset.Names.Count -eq 1 -or $preset.Names.Count -eq $count) -and $preset.Visible -eq $false) { throw 'Individual displays and all displays should start visible.' }
     }
 }
 $savedPath = Join-Path ([IO.Path]::GetTempPath()) ('DisplayFlip-' + [Guid]::NewGuid().ToString('N') + '.psd1')
@@ -98,26 +100,27 @@ if ($items[0].Checked -or $items[1].Checked) { throw 'Stale checkmarks were reta
 function Get-DisplayInfo { throw 'Discovery must not run when a configuration file exists.' }
 if ((Get-DisplayFlipConfig -Path $savedPath).Presets.Count -ne 7) { throw 'Saved configuration did not round-trip.' }
 if ([IO.File]::ReadAllText($savedPath) -ne $savedText) { throw 'Existing configuration was modified.' }
-if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1").Presets.Count -ne 5) { throw 'Existing config was not loaded.' }
+if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1").Presets.Count -ne 5) { throw 'Existing config was not loaded.' }
 function Import-PowerShellDataFile { param($LiteralPath, $ErrorAction) return $script:invalidConfig }
 foreach ($value in @(@{}, @{ AutoConfigure = $true })) {
     $script:invalidConfig = $value
     $rejected = $false
-    try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
+    try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1" | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw 'Invalid existing configuration accepted.' }
 }
 $script:invalidConfig = @{ Monitors = @{ Desk = @{ Identity = 'test' } }; Presets = @(@{ Label = 'Bad'; Names = @('Missing') }) }
 $rejected = $false
-try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
+try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Unknown monitor accepted.' }
 $script:invalidConfig.Presets = @(@{ Label = 'A'; Names = @('Desk'); Hotkey = 'Ctrl+Alt+F1' }, @{ Label = 'B'; Names = @('Desk'); Hotkey = 'Alt+Ctrl+F1' })
 $rejected = $false
-try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
+try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Duplicate hotkey accepted.' }
 $script:invalidConfig.Presets[1].Visible = $false
-if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1").Presets.Count -ne 2) { throw 'Hidden preset should retain its saved shortcut without reserving it.' }
+if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd1").Presets.Count -ne 2) { throw 'Hidden preset should retain its saved shortcut without reserving it.' }
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -Path "$PSScriptRoot\DisplayFlip.Window.cs" -ReferencedAssemblies System.Drawing, System.Windows.Forms
 $settingsFunction = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-DisplayFlipSettings' }, $false).Extent.Text
 $settingsFunction = $settingsFunction.Replace('function Show-DisplayFlipSettings', 'function Test-SettingsConstruction').Replace('[void]$form.ShowDialog()', @'
 if ($monitors.Rows.Count -ne $script:config.Monitors.Count) { throw 'Settings monitor rows are incomplete.' }
@@ -126,6 +129,7 @@ foreach ($grid in @($monitors, $presets)) {
     if ($grid.AllowUserToResizeColumns -or $grid.AllowUserToResizeRows -or $grid.ColumnHeadersHeightSizeMode -ne 'DisableResizing') { throw 'Settings grid resizing should be disabled.' }
 }
 if ($save.Text -ne 'Save & Apply') { throw 'Save action is missing.' }
+if (-not $form.TopMost) { throw 'Settings window should stay on top.' }
 if ($presets.Columns['Visible'] -isnot [Windows.Forms.DataGridViewCheckBoxColumn]) { throw 'Preset visibility checkbox is missing.' }
 if (-not $presets.Columns['Names'].ReadOnly) { throw 'Display combinations should be read-only.' }
 if ($SettingsPreview) {
@@ -135,6 +139,7 @@ if ($SettingsPreview) {
     $bitmap = [Drawing.Bitmap]::new($form.Width, $form.Height)
     try {
         $form.DrawToBitmap($bitmap, [Drawing.Rectangle]::new(0, 0, $form.Width, $form.Height))
+        if (-not $form.TransparencyKey.IsEmpty) { $bitmap.MakeTransparent($form.TransparencyKey) }
         $bitmap.Save($SettingsPreview)
     }
     finally { $bitmap.Dispose() }

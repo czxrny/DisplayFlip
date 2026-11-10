@@ -160,7 +160,7 @@ function New-DisplayFlipConfig {
                     }
                 }
                 if ($selectedNames.Count -gt 1) {
-                    @{ Label = $selectedLabels -join ' + '; Names = $selectedNames }
+                    @{ Label = $selectedLabels -join ' + '; Names = $selectedNames; Visible = $false }
                 }
             }
         )
@@ -269,32 +269,30 @@ function Set-MonitorPreset {
 }
 
 function Show-DisplayFlipSettings {
-    $form = [Windows.Forms.Form]::new()
+    $form = [DisplayFlip.MonitorForm]::new()
     $form.Text = 'DisplayFlip'
-    $form.ClientSize = [Drawing.Size]::new(900, 690)
-    $form.BackColor = [Drawing.Color]::FromArgb(245, 246, 248)
-    $form.Font = [Drawing.Font]::new('Segoe UI', 10)
+    $form.Font = [Drawing.Font]::new('Segoe UI', 9)
     $form.MinimumSize = $form.Size
     $form.StartPosition = 'CenterScreen'
     $layout = [Windows.Forms.TableLayoutPanel]::new()
     $layout.Dock = 'Fill'
     $layout.ColumnCount = 1
-    $layout.Padding = [Windows.Forms.Padding]::new(28, 18, 28, 18)
+    $layout.Padding = [Windows.Forms.Padding]::new(18, 14, 18, 14)
     $layout.RowCount = 6
-    foreach ($height in @(75, 48, 145, 48, 255, 55)) {
+    foreach ($height in @(36, 30, 122, 32, 208, 44)) {
         [void]$layout.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::Absolute, $height))
     }
-    $form.Controls.Add($layout)
+    $form.Screen.Controls.Add($layout)
     $heading = [Windows.Forms.Label]::new()
-    $heading.Text = "DisplayFlip`nYour displays, your way."
-    $heading.Font = [Drawing.Font]::new('Segoe UI', 17)
-    $heading.ForeColor = [Drawing.Color]::FromArgb(38, 111, 108)
+    $heading.Text = 'DISPLAYFLIP / CONTROL PANEL'
+    $heading.Font = [Drawing.Font]::new('Segoe UI Semibold', 13)
+    $heading.ForeColor = [Drawing.Color]::FromArgb(255, 195, 116)
     $heading.Dock = 'Fill'
     $layout.Controls.Add($heading, 0, 0)
     $help = [Windows.Forms.Label]::new()
-    $help.Text = 'Monitors: leave Scale blank to preserve scaling. Display combinations are read-only. Hotkeys: Ctrl/Alt/Shift/Win + A-Z or F1-F24.'
+    $help.Text = '01 / MONITORS     Leave Scale blank to keep current scaling.'
     $help.Dock = 'Fill'
-    $help.ForeColor = [Drawing.Color]::FromArgb(101, 112, 127)
+    $help.ForeColor = [Drawing.Color]::FromArgb(162, 207, 203)
     $layout.Controls.Add($help, 0, 1)
     $monitors = [Windows.Forms.DataGridView]::new()
     $monitors.Dock = 'Fill'
@@ -304,13 +302,16 @@ function Show-DisplayFlipSettings {
     foreach ($column in @('Key', 'Identity', 'Scale')) { [void]$monitors.Columns.Add($column, $column) }
     $monitors.Columns['Key'].ReadOnly = $true
     $monitors.Columns['Identity'].ReadOnly = $true
+    $monitors.Columns['Key'].FillWeight = 23
+    $monitors.Columns['Identity'].FillWeight = 56
+    $monitors.Columns['Scale'].FillWeight = 21
     foreach ($name in ($script:config.Monitors.Keys | Sort-Object)) {
         $monitor = $script:config.Monitors[$name]
         [void]$monitors.Rows.Add([object[]]@($name, $monitor.Identity, $monitor.Scale))
     }
     $layout.Controls.Add($monitors, 0, 2)
     $presetHelp = [Windows.Forms.Label]::new()
-    $presetHelp.Text = 'Edit preset names, shortcuts, and visibility below. Display combinations are read-only.'
+    $presetHelp.Text = '02 / PROFILES     Edit names, hotkeys, and visibility.'
     $presetHelp.Dock = 'Fill'
     $presetHelp.ForeColor = $help.ForeColor
     $layout.Controls.Add($presetHelp, 0, 3)
@@ -326,6 +327,10 @@ function Show-DisplayFlipSettings {
     $visibleColumn.HeaderText = 'Visible'
     $visibleColumn.DefaultCellStyle.NullValue = $true
     [void]$presets.Columns.Add($visibleColumn)
+    $presets.Columns['Label'].FillWeight = 32
+    $presets.Columns['Names'].FillWeight = 28
+    $presets.Columns['Hotkey'].FillWeight = 28
+    $presets.Columns['Visible'].FillWeight = 12
     foreach ($preset in $script:config.Presets) {
         [void]$presets.Rows.Add([object[]]@($preset.Label, ($preset.Names -join ', '), $preset.Hotkey, ($preset.Visible -ne $false)))
     }
@@ -333,32 +338,39 @@ function Show-DisplayFlipSettings {
     foreach ($grid in @($monitors, $presets)) {
         $grid.AllowUserToResizeColumns = $false
         $grid.AllowUserToResizeRows = $false
-        $grid.BackgroundColor = [Drawing.Color]::White
+        $grid.BackgroundColor = [Drawing.Color]::FromArgb(6, 59, 65)
         $grid.BorderStyle = 'None'
         $grid.RowHeadersVisible = $false
         $grid.EnableHeadersVisualStyles = $false
-        $grid.ColumnHeadersDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(229, 234, 240)
-        $grid.ColumnHeadersDefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(66, 80, 99)
+        $grid.ColumnHeadersDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(4, 48, 54)
+        $grid.ColumnHeadersDefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(255, 195, 116)
         $grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = $grid.ColumnHeadersDefaultCellStyle.BackColor
         $grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = $grid.ColumnHeadersDefaultCellStyle.ForeColor
         $grid.ColumnHeadersHeightSizeMode = 'DisableResizing'
-        $grid.DefaultCellStyle.BackColor = [Drawing.Color]::White
-        $grid.DefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(44, 55, 71)
-        $grid.AlternatingRowsDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(247, 249, 251)
-        $grid.DefaultCellStyle.SelectionBackColor = [Drawing.Color]::FromArgb(214, 235, 232)
-        $grid.DefaultCellStyle.SelectionForeColor = [Drawing.Color]::Black
-        $grid.GridColor = [Drawing.Color]::FromArgb(232, 236, 241)
-        $grid.RowTemplate.Height = 30
-        $grid.ColumnHeadersHeight = 32
+        $grid.DefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(6, 59, 65)
+        $grid.DefaultCellStyle.ForeColor = [Drawing.Color]::FromArgb(245, 235, 213)
+        $grid.AlternatingRowsDefaultCellStyle.BackColor = [Drawing.Color]::FromArgb(10, 72, 78)
+        $grid.DefaultCellStyle.SelectionBackColor = [Drawing.Color]::FromArgb(35, 105, 109)
+        $grid.DefaultCellStyle.SelectionForeColor = [Drawing.Color]::FromArgb(255, 241, 218)
+        $grid.GridColor = [Drawing.Color]::FromArgb(28, 86, 89)
+        $grid.ColumnHeadersBorderStyle = 'None'
+        $grid.CellBorderStyle = 'SingleHorizontal'
+        $grid.DefaultCellStyle.Padding = [Windows.Forms.Padding]::new(3, 0, 3, 0)
+        $grid.RowTemplate.Height = 26
+        foreach ($row in $grid.Rows) { $row.Height = 26 }
+        $grid.ColumnHeadersHeight = 28
     }
     $save = [Windows.Forms.Button]::new()
     $save.Text = 'Save & Apply'
     $save.UseMnemonic = $false
     $save.AutoSize = $true
-    $save.BackColor = [Drawing.Color]::FromArgb(38, 111, 108)
-    $save.ForeColor = [Drawing.Color]::White
+    $save.BackColor = [Drawing.Color]::FromArgb(242, 143, 63)
+    $save.ForeColor = [Drawing.Color]::FromArgb(50, 35, 24)
     $save.FlatStyle = 'Flat'
-    $save.Padding = [Windows.Forms.Padding]::new(16, 6, 16, 6)
+    $save.FlatAppearance.BorderColor = [Drawing.Color]::FromArgb(157, 88, 41)
+    $save.FlatAppearance.MouseOverBackColor = [Drawing.Color]::FromArgb(255, 173, 83)
+    $save.FlatAppearance.MouseDownBackColor = [Drawing.Color]::FromArgb(224, 115, 48)
+    $save.Padding = [Windows.Forms.Padding]::new(12, 4, 12, 4)
     $save.Anchor = 'Right'
     $actions = [Windows.Forms.FlowLayoutPanel]::new()
     $actions.Dock = 'Fill'
@@ -526,6 +538,7 @@ try {
 
     $script:config = Get-DisplayFlipConfig
     Add-Type -Path (Join-Path $PSScriptRoot 'DisplayFlip.Hotkeys.cs') -ReferencedAssemblies System.Windows.Forms
+    Add-Type -Path (Join-Path $PSScriptRoot 'DisplayFlip.Window.cs') -ReferencedAssemblies System.Drawing, System.Windows.Forms
     Initialize-DisplayFlipMenu
     $script:tray = [Windows.Forms.NotifyIcon]::new()
     $script:icon = [Drawing.Icon]::new((Join-Path $PSScriptRoot 'icon.ico'))

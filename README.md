@@ -2,6 +2,8 @@
 
 A small Windows system tray app for switching monitor combinations with a menu or global hotkeys. Powered by the [DisplayConfig PowerShell module](https://github.com/MartinGC94/DisplayConfig).
 
+![DisplayFlip settings inside a retro monitor frame, with monitor scaling and profile hotkey controls](docs/settings.png)
+
 ## Requirements
 
 For the packaged app, extract the entire ZIP to a writable folder and run **DisplayFlip.exe**. Keep the files together. DisplayConfig is bundled, and personal configuration is generated on first launch. Double-click the tray icon to open settings.
@@ -27,7 +29,7 @@ Automatic configuration leaves scaling unchanged. Run `Show-Diagnostics.cmd` to 
 
 The tray also lists every combination of two or more displays as menu-only presets, keeping the individual-display and "All displays" hotkeys unchanged. Three displays produce seven choices: three individual displays, three pairs, and all displays. An all-off preset is never generated. For more than eight displays, only individual displays and "All displays" are generated to keep the menu manageable; define custom combinations in `Monitors.psd1` for larger setups.
 
-Keep `DisplayFlip.ps1`, `DisplayFlip.Hotkeys.cs`, and `icon.ico` together. The launchers and `Autostart.ps1` should remain in the same folder. `icon.png` is the source artwork for the tray icon.
+Keep `DisplayFlip.ps1`, `DisplayFlip.Hotkeys.cs`, `DisplayFlip.Window.cs`, and `icon.ico` together. The launchers and `Autostart.ps1` should remain in the same folder. `icon.png` is the source artwork for the tray icon.
 
 ## Example custom presets and hotkeys
 
