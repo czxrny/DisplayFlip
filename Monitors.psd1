@@ -1,0 +1,5 @@
+﻿@{
+    OLED = 'DISPLAY#CND3CF8#'
+    LCD = 'DISPLAY#HPN375A#'
+    LAPTOP = 'DISPLAY#AUO51ED#'
+}
