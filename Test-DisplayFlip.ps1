@@ -7,10 +7,14 @@ $script:config = Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.Example.psd
 if ($script:config.Presets.Count -ne 5) { throw 'Unexpected default presets.' }
 $binding = ConvertTo-DisplayFlipHotkey 'Shift+Ctrl+F24'
 if ($binding.Modifiers -ne 6 -or $binding.Key -ne 135) { throw 'Incorrect hotkey mapping.' }
-foreach ($value in @('Ctrl+Ctrl+F1', 'Alt+X', 'Ctrl+F25')) {
+foreach ($value in @('Ctrl+Ctrl+F1', 'Alt+Enter', 'Ctrl+F25', 'Ctrl+AB', 'Ctrl+1')) {
     $rejected = $false
     try { ConvertTo-DisplayFlipHotkey $value | Out-Null } catch { $rejected = $true }
     if (-not $rejected) { throw "Invalid hotkey accepted: $value" }
+}
+foreach ($letter in @('a', 'M', 'z')) {
+    $binding = ConvertTo-DisplayFlipHotkey "Ctrl+Shift+$letter"
+    if ($binding.Modifiers -ne 6 -or $binding.Key -ne [uint32][char]$letter.ToUpperInvariant()) { throw 'Incorrect letter hotkey mapping.' }
 }
 function Get-DisplayInfo {
     [pscustomobject]@{ DevicePath = 'DISPLAY#CND3CF8#test'; DisplayId = 1; Active = $true }
@@ -65,6 +69,15 @@ $savedPath = Join-Path ([IO.Path]::GetTempPath()) ('DisplayFlip-' + [Guid]::NewG
 if ((Get-DisplayFlipConfig -Path $savedPath).Monitors.Count -ne 3) { throw 'Missing config did not use discovery.' }
 if (-not (Test-Path -LiteralPath $savedPath)) { throw 'Discovered config was not saved.' }
 $savedText = [IO.File]::ReadAllText($savedPath)
+$edited = Import-PowerShellDataFile -LiteralPath $savedPath
+$edited.Monitors.Display1.Scale = 125
+$edited.Presets[0].Label = "Desk's display"
+$edited.Presets[0].Hotkey = 'Ctrl+Alt+M'
+Save-DisplayFlipConfig -Config $edited -Path $savedPath -Replace
+$reloaded = Get-DisplayFlipConfig -Path $savedPath
+if ($reloaded.Monitors.Display1.Scale -ne 125 -or $reloaded.Presets[0].Label -ne "Desk's display" -or $reloaded.Presets[0].Hotkey -ne 'Ctrl+Alt+M') { throw 'Edited settings did not round-trip.' }
+if (@(Get-ChildItem -LiteralPath ([IO.Path]::GetDirectoryName($savedPath)) -Filter (([IO.Path]::GetFileName($savedPath)) + '.*.bak')).Count -ne 1) { throw 'Previous settings were not backed up.' }
+$savedText = [IO.File]::ReadAllText($savedPath)
 if ($savedText -notmatch '# Presets:' -or $savedText -notmatch '# Hotkey') { throw 'Generated configuration lacks editing instructions.' }
 $checkConfig = @{ Monitors = @{ A = @{ Identity = 'path-a' }; B = @{ Identity = 'path-b' } } }
 $items = @(
@@ -97,4 +110,14 @@ $script:invalidConfig.Presets = @(@{ Label = 'A'; Names = @('Desk'); Hotkey = 'C
 $rejected = $false
 try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Duplicate hotkey accepted.' }
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName System.Windows.Forms
+$settingsFunction = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-DisplayFlipSettings' }, $false).Extent.Text
+$settingsFunction = $settingsFunction.Replace('function Show-DisplayFlipSettings', 'function Test-SettingsConstruction').Replace('[void]$form.ShowDialog()', @'
+if ($monitors.Rows.Count -ne $script:config.Monitors.Count) { throw 'Settings monitor rows are incomplete.' }
+if ($presets.Rows.Count -ne $script:config.Presets.Count + 1) { throw 'Settings preset rows are incomplete.' }
+if ($save.Text -ne 'Save & Apply') { throw 'Save action is missing.' }
+'@)
+Invoke-Expression $settingsFunction
+Test-SettingsConstruction
 'PASS: discovery, configuration validation, hotkeys, mocked switching, scaling, and disconnected displays.'

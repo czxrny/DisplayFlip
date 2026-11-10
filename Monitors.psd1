@@ -1,12 +1,13 @@
-﻿# Save changes, then exit and restart DisplayFlip.
-# Monitors: Identity identifies the display; optional Scale sets its scaling percentage.
-# Presets: Label is tray text; Names lists monitor keys to enable; others are disabled.
-# Hotkey is optional: Ctrl, Alt, Shift, Win plus F1-F24. Keep Names consistent with monitor keys.
+﻿# DisplayFlip settings: use Settings > Save & Apply to apply changes without restarting.
+# Monitors: Identity is the device path; add Scale = 100 (or another supported percentage) to set scaling.
+# Presets: Label is tray text; Names lists monitor keys to enable; other configured monitors are disabled.
+# Hotkey is optional: Ctrl, Alt, Shift, Win plus A-Z or F1-F24, for example Ctrl+Alt+M.
+# Keep monitor keys and preset Names consistent. Every preset must enable at least one monitor.
 @{
     Monitors = @{
-        OLED = @{ Identity = 'DISPLAY#CND3CF8#' }
-        LCD = @{ Identity = 'DISPLAY#HPN375A#'; Scale = 100 }
-        LAPTOP = @{ Identity = 'DISPLAY#AUO51ED#' }
+        'LAPTOP' = @{ Identity = 'DISPLAY#AUO51ED#' }
+        'LCD' = @{ Identity = 'DISPLAY#HPN375A#'; Scale = 100 }
+        'OLED' = @{ Identity = 'DISPLAY#CND3CF8#' }
     }
     Presets = @(
         @{ Label = 'OLED'; Names = @('OLED'); Hotkey = 'Ctrl+Alt+F1' },

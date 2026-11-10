@@ -70,30 +70,41 @@ function Get-DisplayFlipConfig {
 }
 
 function Save-DisplayFlipConfig {
-    param([hashtable]$Config, [string]$Path)
+    param([hashtable]$Config, [string]$Path, [switch]$Replace)
 
     $lines = @(
-        '# DisplayFlip settings: save this file, then exit and restart the app to apply changes.'
+        '# DisplayFlip settings: use Settings > Save & Apply to apply changes without restarting.'
         '# Monitors: Identity is the device path; add Scale = 100 (or another supported percentage) to set scaling.'
         '# Presets: Label is tray text; Names lists monitor keys to enable; other configured monitors are disabled.'
-        '# Hotkey is optional: Ctrl, Alt, Shift, Win plus F1-F24, for example Ctrl+Alt+F1.'
+        '# Hotkey is optional: Ctrl, Alt, Shift, Win plus A-Z or F1-F24, for example Ctrl+Alt+M.'
         '# Keep monitor keys and preset Names consistent. Every preset must enable at least one monitor.'
         '@{', '    Monitors = @{'
     )
     foreach ($name in ($Config.Monitors.Keys | Sort-Object)) {
         $identity = $Config.Monitors[$name].Identity.Replace("'", "''")
-        $lines += "        $name = @{ Identity = '$identity' }"
+        $escapedName = $name.Replace("'", "''")
+        $scale = if ($Config.Monitors[$name].ContainsKey('Scale')) { '; Scale = ' + $Config.Monitors[$name].Scale } else { '' }
+        $lines += "        '$escapedName' = @{ Identity = '$identity'$scale }"
     }
     $lines += '    }', '    Presets = @('
     foreach ($preset in $Config.Presets) {
         $label = $preset.Label.Replace("'", "''")
-        $names = @($preset.Names | ForEach-Object { "'$_'" }) -join ', '
+        $names = @($preset.Names | ForEach-Object { "'$($_.Replace("'", "''"))'" }) -join ', '
         $line = "        @{ Label = '$label'; Names = @($names)"
-        if ($preset.Hotkey) { $line += "; Hotkey = '$($preset.Hotkey)'" }
+        if ($preset.Hotkey) { $line += "; Hotkey = '$($preset.Hotkey.Replace("'", "''"))'" }
         $lines += $line + ' },'
     }
     $lines[-1] = $lines[-1].TrimEnd(',')
     $lines += '    )', '}'
+    if ($Replace) {
+        $temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+        Save-DisplayFlipConfig -Config $Config -Path $temporary
+        if (Test-Path -LiteralPath $Path) {
+            [IO.File]::Replace($temporary, $Path, ($Path + '.' + [Guid]::NewGuid().ToString('N') + '.bak'))
+        }
+        else { [IO.File]::Move($temporary, $Path) }
+        return
+    }
     # CreateNew prevents overwriting a configuration created since discovery started.
     $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
     try {
@@ -160,14 +171,20 @@ function ConvertTo-DisplayFlipHotkey {
     for ($i = 0; $i -lt $parts.Count - 1; $i++) {
         $part = $parts[$i]
         if (-not $modifierValues.ContainsKey($part) -or ($modifiers -band $modifierValues[$part])) {
-            throw "Invalid hotkey: $Hotkey. Use modifiers Ctrl, Alt, Shift, Win and a key F1-F24."
+            throw "Invalid hotkey: $Hotkey. Use modifiers Ctrl, Alt, Shift, Win and a key A-Z or F1-F24."
         }
         $modifiers = $modifiers -bor $modifierValues[$part]
     }
-    if ($parts[-1] -notmatch '^F([1-9]|1[0-9]|2[0-4])$') {
-        throw "Invalid hotkey: $Hotkey. Use a function key F1-F24."
+    if ($parts[-1] -match '^[A-Z]$') {
+        $key = [uint32][char]$parts[-1].ToUpperInvariant()
     }
-    return @{ Modifiers = [uint32]$modifiers; Key = [uint32](111 + [int]$Matches[1]) }
+    elseif ($parts[-1] -match '^F([1-9]|1[0-9]|2[0-4])$') {
+        $key = [uint32](111 + [int]$Matches[1])
+    }
+    else {
+        throw "Invalid hotkey: $Hotkey. Use a letter A-Z or function key F1-F24."
+    }
+    return @{ Modifiers = [uint32]$modifiers; Key = $key }
 }
 
 function Set-MonitorScale {
@@ -244,14 +261,100 @@ function Set-MonitorPreset {
     Set-MonitorScale -Config $config -DisplayNames $DisplayNames
 }
 
-try {
-    Import-Module DisplayConfig -ErrorAction Stop
-    [Windows.Forms.Application]::EnableVisualStyles()
-    $script:menu = [Windows.Forms.ContextMenuStrip]::new()
+function Show-DisplayFlipSettings {
+    $form = [Windows.Forms.Form]::new()
+    $form.Text = 'DisplayFlip settings'
+    $form.Size = [Drawing.Size]::new(850, 600)
+    $form.MinimumSize = $form.Size
+    $form.StartPosition = 'CenterScreen'
+    $layout = [Windows.Forms.TableLayoutPanel]::new()
+    $layout.Dock = 'Fill'
+    $layout.ColumnCount = 1
+    $layout.RowCount = 5
+    foreach ($height in @(45, 150, 40, 230, 45)) {
+        [void]$layout.RowStyles.Add([Windows.Forms.RowStyle]::new([Windows.Forms.SizeType]::Absolute, $height))
+    }
+    $form.Controls.Add($layout)
+    $help = [Windows.Forms.Label]::new()
+    $help.Text = 'Monitors: leave Scale blank to preserve scaling. Presets: enter monitor keys separated by commas. Hotkeys: Ctrl/Alt/Shift/Win + A-Z or F1-F24.'
+    $help.Dock = 'Fill'
+    $layout.Controls.Add($help, 0, 0)
+    $monitors = [Windows.Forms.DataGridView]::new()
+    $monitors.Dock = 'Fill'
+    $monitors.AllowUserToAddRows = $false
+    $monitors.AllowUserToDeleteRows = $false
+    $monitors.AutoSizeColumnsMode = 'Fill'
+    foreach ($column in @('Key', 'Identity', 'Scale')) { [void]$monitors.Columns.Add($column, $column) }
+    $monitors.Columns['Key'].ReadOnly = $true
+    $monitors.Columns['Identity'].ReadOnly = $true
+    foreach ($name in ($script:config.Monitors.Keys | Sort-Object)) {
+        $monitor = $script:config.Monitors[$name]
+        [void]$monitors.Rows.Add([object[]]@($name, $monitor.Identity, $monitor.Scale))
+    }
+    $layout.Controls.Add($monitors, 0, 1)
+    $presetHelp = [Windows.Forms.Label]::new()
+    $presetHelp.Text = 'Edit preset names, combinations, and shortcuts below. Use the last row to add a preset; select a row and press Delete to remove it.'
+    $presetHelp.Dock = 'Fill'
+    $layout.Controls.Add($presetHelp, 0, 2)
+    $presets = [Windows.Forms.DataGridView]::new()
+    $presets.Dock = 'Fill'
+    $presets.AutoSizeColumnsMode = 'Fill'
+    foreach ($column in @('Label', 'Names', 'Hotkey')) { [void]$presets.Columns.Add($column, $column) }
+    foreach ($preset in $script:config.Presets) {
+        [void]$presets.Rows.Add([object[]]@($preset.Label, ($preset.Names -join ', '), $preset.Hotkey))
+    }
+    $layout.Controls.Add($presets, 0, 3)
+    $save = [Windows.Forms.Button]::new()
+    $save.Text = 'Save & Apply'
+    $save.UseMnemonic = $false
+    $save.AutoSize = $true
+    $layout.Controls.Add($save, 0, 4)
+    $save.Add_Click({
+        try {
+            [void]$monitors.EndEdit()
+            [void]$presets.EndEdit()
+            $config = @{ Monitors = @{}; Presets = @() }
+            foreach ($row in $monitors.Rows) {
+                $monitor = @{ Identity = [string]$row.Cells['Identity'].Value }
+                $scale = [string]$row.Cells['Scale'].Value
+                if (-not [string]::IsNullOrWhiteSpace($scale)) { $monitor.Scale = [int]$scale }
+                $config.Monitors[[string]$row.Cells['Key'].Value] = $monitor
+            }
+            foreach ($row in $presets.Rows) {
+                if ($row.IsNewRow) { continue }
+                $config.Presets += @{
+                    Label = [string]$row.Cells['Label'].Value
+                    Names = @(([string]$row.Cells['Names'].Value).Split(',') | ForEach-Object { $_.Trim() })
+                    Hotkey = [string]$row.Cells['Hotkey'].Value
+                }
+            }
+            $configPath = Join-Path $PSScriptRoot 'Monitors.psd1'
+            $validationPath = Join-Path ([IO.Path]::GetTempPath()) ('DisplayFlip-' + [Guid]::NewGuid().ToString('N') + '.psd1')
+            Save-DisplayFlipConfig -Config $config -Path $validationPath
+            $config = Get-DisplayFlipConfig -Path $validationPath
+            Save-DisplayFlipConfig -Config $config -Path $configPath -Replace
+            $script:config = $config
+            Initialize-DisplayFlipMenu
+            try { Set-MonitorScale -Config $config -DisplayNames @($config.Monitors.Keys) }
+            catch {
+                [void][Windows.Forms.MessageBox]::Show(('Settings saved, but scaling could not be applied: ' + $_.Exception.Message), 'DisplayFlip', 'OK', 'Warning')
+            }
+            $form.Close()
+        }
+        catch {
+            [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip settings', 'OK', 'Warning')
+        }
+    })
+    try { [void]$form.ShowDialog() }
+    finally { $form.Dispose() }
+}
 
-    $script:config = Get-DisplayFlipConfig
+function Initialize-DisplayFlipMenu {
+    if ($script:hotkeys) { $script:hotkeys.Dispose() }
+    $oldMenu = $script:menu
+    $script:menu = [Windows.Forms.ContextMenuStrip]::new()
     $presets = $script:config.Presets
-    Add-Type -Path (Join-Path $PSScriptRoot 'DisplayFlip.Hotkeys.cs') -ReferencedAssemblies System.Windows.Forms
+
     $script:hotkeys = [DisplayFlip.HotkeyWindow]::new()
     $hotkeyId = 0
     $hotkeyErrors = @()
@@ -281,10 +384,10 @@ try {
         [void]$script:menu.Items.Add($item)
     }
     [void]$script:menu.Items.Add([Windows.Forms.ToolStripSeparator]::new())
-    $editItem = [Windows.Forms.ToolStripMenuItem]::new('Edit configuration')
+    $editItem = [Windows.Forms.ToolStripMenuItem]::new('Settings...')
     $editItem.Add_Click({
         try {
-            Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\notepad.exe') -ArgumentList ('"{0}"' -f (Join-Path $PSScriptRoot 'Monitors.psd1'))
+            Show-DisplayFlipSettings
         }
         catch {
             [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip', 'OK', 'Warning')
@@ -312,6 +415,18 @@ try {
     if ($hotkeyErrors.Count -gt 0) {
         [void][Windows.Forms.MessageBox]::Show(($hotkeyErrors -join "`n"), 'DisplayFlip - hotkeys', 'OK', 'Warning')
     }
+    if ($script:tray) { $script:tray.ContextMenuStrip = $script:menu }
+    if ($oldMenu) { $oldMenu.Dispose() }
+}
+
+try {
+    Import-Module DisplayConfig -ErrorAction Stop
+    [Windows.Forms.Application]::EnableVisualStyles()
+    $script:menu = [Windows.Forms.ContextMenuStrip]::new()
+
+    $script:config = Get-DisplayFlipConfig
+    Add-Type -Path (Join-Path $PSScriptRoot 'DisplayFlip.Hotkeys.cs') -ReferencedAssemblies System.Windows.Forms
+    Initialize-DisplayFlipMenu
     $script:tray = [Windows.Forms.NotifyIcon]::new()
     $script:icon = [Drawing.Icon]::new((Join-Path $PSScriptRoot 'icon.ico'))
     $script:tray.Icon = $script:icon

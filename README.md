@@ -1,4 +1,4 @@
-# DisplayFlip
+﻿# DisplayFlip
 
 A small Windows system tray app for switching monitor combinations with a menu or global hotkeys. Powered by the [DisplayConfig PowerShell module](https://github.com/MartinGC94/DisplayConfig).
 
@@ -47,11 +47,11 @@ An optional `Scale` value on each monitor sets its scaling percentage at startup
 
 ## Configuration
 
-Choose **Edit configuration** in the tray to open `Monitors.psd1` in Notepad. Generated files include commented editing instructions. The tray checks the active combination whenever you open the menu, considering configured monitors only.
+Choose **Settings...** in the tray to edit preset labels, monitor combinations, hotkeys, and scaling. Click **Save & Apply** to save the file and refresh the tray and shortcuts immediately, without restarting. Leave scaling blank to preserve it. Monitor keys and identities are read-only in this window. Invalid settings are rejected; unavailable hotkeys are reported and those presets remain accessible from the tray. Each save preserves the previous file in a uniquely named `.bak` file. Generated files include commented editing instructions. The tray checks the active combination whenever you open the menu, considering configured monitors only.
 
 Personal `Monitors.psd1` files are ignored by Git and excluded from source archives. The copy already tracked in this repository must still be untracked before publishing the repository itself; ignore rules do not untrack existing files. Distribute `Monitors.Example.psd1` instead.
 
-Edit `Monitors.psd1` in a text editor to customize your setup. In `Monitors`, change monitor identities and optional `Scale` percentages. In `Presets`, change `Label` for the tray text, `Names` for the monitors to enable, and `Hotkey` for the shortcut. Keep the monitor keys and preset `Names` consistent. Save the file, exit DisplayFlip, and launch it again to apply your changes.
+Edit `Monitors.psd1` in a text editor to customize your setup. In `Monitors`, change monitor identities and optional `Scale` percentages. In `Presets`, change `Label` for the tray text, `Names` for the monitors to enable, and `Hotkey` for the shortcut. Keep the monitor keys and preset `Names` consistent. For manual file edits, restart DisplayFlip to load them. Use the settings window to save and apply changes immediately.
 
 You can use `Monitors.Example.psd1` as a starting point. The settings saved on first launch can be edited in the same way. The application folder must be writable to save the file.
 
@@ -72,7 +72,7 @@ An existing `Monitors.psd1` is authoritative: it must contain valid Monitors and
 
 Monitor names are arbitrary keys shared by `Monitors` and preset `Names`. Preset order determines menu order. Each preset needs a label and at least one configured monitor. The app rejects unknown monitor names, repeated names, and duplicate hotkeys.
 
-`Hotkey` is optional; omit it or use an empty string for a menu-only preset. Supported keys are F1-F24 with optional Ctrl, Alt, Shift, and Win modifiers, for example `Ctrl+Shift+F8`. Modifier order and capitalization do not matter.
+`Hotkey` is optional; omit it or use an empty string for a menu-only preset. Supported keys are A-Z and F1-F24 with optional Ctrl, Alt, Shift, and Win modifiers, for example `Ctrl+Shift+F8` or `Ctrl+Alt+M`. Modifier order and capitalization do not matter.
 
 `Scale` must be an integer from 100 to 500; actual supported percentages depend on the monitor and Windows. The five presets in Monitors.Example.psd1 preserve the original setup. There is no built-in limit of three monitors or five presets.
 
