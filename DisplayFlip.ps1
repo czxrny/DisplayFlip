@@ -54,12 +54,13 @@ function Get-DisplayFlipConfig {
             throw 'Each preset must define a Label and a non-empty Names array.'
         }
         $names = @{}
+        if ($preset.ContainsKey('Visible') -and $preset.Visible -isnot [bool]) { throw 'Preset Visible must be $true or $false.' }
         foreach ($name in $preset.Names) {
             if (-not $config.Monitors.ContainsKey($name)) { throw "Preset $($preset.Label) references unknown monitor $name." }
             if ($names.ContainsKey($name)) { throw "Preset $($preset.Label) repeats monitor $name." }
             $names[$name] = $true
         }
-        if (-not [string]::IsNullOrWhiteSpace($preset.Hotkey)) {
+        if ($preset.Visible -ne $false -and -not [string]::IsNullOrWhiteSpace($preset.Hotkey)) {
             $binding = ConvertTo-DisplayFlipHotkey $preset.Hotkey
             $key = '{0}:{1}' -f $binding.Modifiers, $binding.Key
             if ($hotkeys.ContainsKey($key)) { throw "Duplicate hotkey: $($preset.Hotkey)." }
@@ -77,6 +78,7 @@ function Save-DisplayFlipConfig {
         '# Monitors: Identity is the device path; add Scale = 100 (or another supported percentage) to set scaling.'
         '# Presets: Label is tray text; Names lists monitor keys to enable; other configured monitors are disabled.'
         '# Hotkey is optional: Ctrl, Alt, Shift, Win plus A-Z or F1-F24, for example Ctrl+Alt+M.'
+        '# Visible = $false hides a preset from the tray and disables its hotkey.'
         '# Keep monitor keys and preset Names consistent. Every preset must enable at least one monitor.'
         '@{', '    Monitors = @{'
     )
@@ -92,6 +94,7 @@ function Save-DisplayFlipConfig {
         $names = @($preset.Names | ForEach-Object { "'$($_.Replace("'", "''"))'" }) -join ', '
         $line = "        @{ Label = '$label'; Names = @($names)"
         if ($preset.Hotkey) { $line += "; Hotkey = '$($preset.Hotkey.Replace("'", "''"))'" }
+        if ($preset.ContainsKey('Visible')) { $line += '; Visible = $' + ([bool]$preset.Visible).ToString().ToLowerInvariant() }
         $lines += $line + ' },'
     }
     $lines[-1] = $lines[-1].TrimEnd(',')
@@ -300,8 +303,13 @@ function Show-DisplayFlipSettings {
     $presets.Dock = 'Fill'
     $presets.AutoSizeColumnsMode = 'Fill'
     foreach ($column in @('Label', 'Names', 'Hotkey')) { [void]$presets.Columns.Add($column, $column) }
+    $visibleColumn = [Windows.Forms.DataGridViewCheckBoxColumn]::new()
+    $visibleColumn.Name = 'Visible'
+    $visibleColumn.HeaderText = 'Visible'
+    $visibleColumn.DefaultCellStyle.NullValue = $true
+    [void]$presets.Columns.Add($visibleColumn)
     foreach ($preset in $script:config.Presets) {
-        [void]$presets.Rows.Add([object[]]@($preset.Label, ($preset.Names -join ', '), $preset.Hotkey))
+        [void]$presets.Rows.Add([object[]]@($preset.Label, ($preset.Names -join ', '), $preset.Hotkey, ($preset.Visible -ne $false)))
     }
     $layout.Controls.Add($presets, 0, 3)
     $save = [Windows.Forms.Button]::new()
@@ -326,6 +334,7 @@ function Show-DisplayFlipSettings {
                     Label = [string]$row.Cells['Label'].Value
                     Names = @(([string]$row.Cells['Names'].Value).Split(',') | ForEach-Object { $_.Trim() })
                     Hotkey = [string]$row.Cells['Hotkey'].Value
+                    Visible = $row.Cells['Visible'].Value -ne $false
                 }
             }
             $configPath = Join-Path $PSScriptRoot 'Monitors.psd1'
@@ -349,6 +358,25 @@ function Show-DisplayFlipSettings {
     finally { $form.Dispose() }
 }
 
+function Test-DisplayFlipAutostart {
+    $startup = [Environment]::GetFolderPath('Startup')
+    return $startup -and (Test-Path -LiteralPath (Join-Path $startup 'DisplayFlip.lnk'))
+}
+
+function Set-DisplayFlipAutostart {
+    param([bool]$Enabled)
+
+    $action = if ($Enabled) { 'Enable' } else { 'Disable' }
+    $arguments = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "{0}" -Action {1}' -f (Join-Path $PSScriptRoot 'Autostart.ps1'), $action
+    $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+    try {
+        if ($process.ExitCode -ne 0) {
+            throw 'Could not update startup settings. Check that the Startup folder is writable and any existing DisplayFlip.lnk belongs to this app.'
+        }
+    }
+    finally { $process.Dispose() }
+}
+
 function Initialize-DisplayFlipMenu {
     if ($script:hotkeys) { $script:hotkeys.Dispose() }
     $oldMenu = $script:menu
@@ -357,11 +385,12 @@ function Initialize-DisplayFlipMenu {
 
     $script:hotkeys = [DisplayFlip.HotkeyWindow]::new()
     $hotkeyId = 0
+    $script:presetItems = @{}
     $hotkeyErrors = @()
     foreach ($preset in $presets) {
         $hotkeyId++
         $text = $preset.Label
-        if (-not [string]::IsNullOrWhiteSpace($preset.Hotkey)) {
+        if ($preset.Visible -ne $false -and -not [string]::IsNullOrWhiteSpace($preset.Hotkey)) {
             $binding = ConvertTo-DisplayFlipHotkey $preset.Hotkey
             $text = '{0} ({1})' -f $preset.Label, $preset.Hotkey
             try { $script:hotkeys.Register($hotkeyId, $binding.Modifiers, $binding.Key) }
@@ -381,7 +410,9 @@ function Initialize-DisplayFlipMenu {
                 [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip', 'OK', 'Warning')
             }
         })
+        $script:presetItems[$hotkeyId] = $item
         [void]$script:menu.Items.Add($item)
+        $item.Visible = $preset.Visible -ne $false
     }
     [void]$script:menu.Items.Add([Windows.Forms.ToolStripSeparator]::new())
     $editItem = [Windows.Forms.ToolStripMenuItem]::new('Settings...')
@@ -394,7 +425,22 @@ function Initialize-DisplayFlipMenu {
         }
     })
     [void]$script:menu.Items.Add($editItem)
+    $startupItem = [Windows.Forms.ToolStripMenuItem]::new('Open at startup')
+    $startupItem.Name = 'Autostart'
+    $startupItem.Checked = Test-DisplayFlipAutostart
+    $startupItem.Add_Click({
+        param($sender, $eventArgs)
+        try {
+            Set-DisplayFlipAutostart -Enabled (-not (Test-DisplayFlipAutostart))
+            $sender.Checked = Test-DisplayFlipAutostart
+        }
+        catch {
+            [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip startup', 'OK', 'Warning')
+        }
+    })
+    [void]$script:menu.Items.Add($startupItem)
     $script:menu.Add_Opening({
+        $script:menu.Items['Autostart'].Checked = Test-DisplayFlipAutostart
         try {
             Update-DisplayFlipChecks -Items $script:menu.Items -Config $script:config -Displays @(Get-DisplayInfo -ErrorAction Stop)
         }
@@ -410,7 +456,13 @@ function Initialize-DisplayFlipMenu {
 
     $script:hotkeys.Add_Pressed({
         param($id)
-        $script:menu.Items[[int]$id - 1].PerformClick()
+        $item = $script:presetItems[[int]$id]
+        if ($item -and $item.Tag.Visible -ne $false) {
+            try { Set-MonitorPreset -Preset $item.Tag }
+            catch {
+                [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'DisplayFlip', 'OK', 'Warning')
+            }
+        }
     })
     if ($hotkeyErrors.Count -gt 0) {
         [void][Windows.Forms.MessageBox]::Show(($hotkeyErrors -join "`n"), 'DisplayFlip - hotkeys', 'OK', 'Warning')

@@ -73,8 +73,10 @@ $edited = Import-PowerShellDataFile -LiteralPath $savedPath
 $edited.Monitors.Display1.Scale = 125
 $edited.Presets[0].Label = "Desk's display"
 $edited.Presets[0].Hotkey = 'Ctrl+Alt+M'
+$edited.Presets[0].Visible = $false
 Save-DisplayFlipConfig -Config $edited -Path $savedPath -Replace
 $reloaded = Get-DisplayFlipConfig -Path $savedPath
+if ($reloaded.Presets[0].Visible -ne $false) { throw 'Preset visibility did not round-trip.' }
 if ($reloaded.Monitors.Display1.Scale -ne 125 -or $reloaded.Presets[0].Label -ne "Desk's display" -or $reloaded.Presets[0].Hotkey -ne 'Ctrl+Alt+M') { throw 'Edited settings did not round-trip.' }
 if (@(Get-ChildItem -LiteralPath ([IO.Path]::GetDirectoryName($savedPath)) -Filter (([IO.Path]::GetFileName($savedPath)) + '.*.bak')).Count -ne 1) { throw 'Previous settings were not backed up.' }
 $savedText = [IO.File]::ReadAllText($savedPath)
@@ -110,6 +112,8 @@ $script:invalidConfig.Presets = @(@{ Label = 'A'; Names = @('Desk'); Hotkey = 'C
 $rejected = $false
 try { Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1" | Out-Null } catch { $rejected = $true }
 if (-not $rejected) { throw 'Duplicate hotkey accepted.' }
+$script:invalidConfig.Presets[1].Visible = $false
+if ((Get-DisplayFlipConfig -Path "$PSScriptRoot\Monitors.psd1").Presets.Count -ne 2) { throw 'Hidden preset should retain its saved shortcut without reserving it.' }
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName System.Windows.Forms
 $settingsFunction = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-DisplayFlipSettings' }, $false).Extent.Text
@@ -117,7 +121,28 @@ $settingsFunction = $settingsFunction.Replace('function Show-DisplayFlipSettings
 if ($monitors.Rows.Count -ne $script:config.Monitors.Count) { throw 'Settings monitor rows are incomplete.' }
 if ($presets.Rows.Count -ne $script:config.Presets.Count + 1) { throw 'Settings preset rows are incomplete.' }
 if ($save.Text -ne 'Save & Apply') { throw 'Save action is missing.' }
+if ($presets.Columns['Visible'] -isnot [Windows.Forms.DataGridViewCheckBoxColumn]) { throw 'Preset visibility checkbox is missing.' }
 '@)
 Invoke-Expression $settingsFunction
 Test-SettingsConstruction
+function Start-Process {
+    param($FilePath, $ArgumentList, $WindowStyle, [switch]$Wait, [switch]$PassThru)
+    $script:startupArguments = $ArgumentList
+    if ($WindowStyle -ne 'Hidden' -or -not $Wait -or -not $PassThru) { throw 'Startup helper must run hidden and wait for completion.' }
+    $process = [pscustomobject]@{ ExitCode = $script:startupExitCode }
+    $process | Add-Member -MemberType ScriptMethod -Name Dispose -Value { $script:startupDisposed = $true }
+    return $process
+}
+$script:startupExitCode = 0
+$startupFunction = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-DisplayFlipAutostart' }, $false).Extent.Text
+Invoke-Expression $startupFunction.Replace('$PSScriptRoot', ("'" + $PSScriptRoot.Replace("'", "''") + "'"))
+foreach ($enabled in @($true, $false)) {
+    Set-DisplayFlipAutostart -Enabled $enabled
+    $action = if ($enabled) { 'Enable' } else { 'Disable' }
+    if ($script:startupArguments -notlike "*-Action $action" -or -not $script:startupDisposed) { throw 'Incorrect startup helper invocation.' }
+}
+$script:startupExitCode = 1
+$rejected = $false
+try { Set-DisplayFlipAutostart -Enabled $true } catch { $rejected = $true }
+if (-not $rejected) { throw 'Failed startup update was not reported.' }
 'PASS: discovery, configuration validation, hotkeys, mocked switching, scaling, and disconnected displays.'
