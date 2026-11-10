@@ -1,5 +1,10 @@
 function Get-DisplayFlipConfig {
-    $config = Import-PowerShellDataFile -LiteralPath (Join-Path $PSScriptRoot 'Monitors.psd1') -ErrorAction Stop
+    param([string]$Path = (Join-Path $PSScriptRoot 'Monitors.psd1'))
+
+    $config = Import-PowerShellDataFile -LiteralPath $Path -ErrorAction Stop
+    if ($config.AutoConfigure -eq $true) {
+        $config = New-DisplayFlipConfig -Displays @(Get-DisplayInfo -ErrorAction Stop)
+    }
     if ($config.Monitors -isnot [hashtable] -or $config.Monitors.Count -eq 0) {
         throw 'Monitors.psd1 must define a non-empty Monitors table.'
     }
@@ -32,6 +37,34 @@ function Get-DisplayFlipConfig {
         }
     }
     return $config
+}
+
+function New-DisplayFlipConfig {
+    param([object[]]$Displays)
+
+    $displaysWithPaths = @($Displays | Where-Object { -not [string]::IsNullOrWhiteSpace($_.DevicePath) } | Sort-Object DevicePath)
+    if ($displaysWithPaths.Count -eq 0) { throw 'No displays with device paths were detected. Connect a display and restart DisplayFlip.' }
+    $monitors = @{}
+    $paths = @{}
+    $presets = @()
+    $names = @()
+    foreach ($display in $displaysWithPaths) {
+        if ($paths.ContainsKey($display.DevicePath)) { throw 'Duplicate display device paths were detected. Automatic configuration is ambiguous.' }
+        $paths[$display.DevicePath] = $true
+        $name = 'Display{0}' -f ($names.Count + 1)
+        $names += $name
+        $label = [string]$display.DisplayName
+        if ([string]::IsNullOrWhiteSpace($label)) { $label = 'Display' }
+        $monitors[$name] = @{ Identity = [string]$display.DevicePath }
+        $preset = @{ Label = '{0} ({1})' -f $label, $names.Count; Names = @($name) }
+        if ($names.Count -le 23) { $preset.Hotkey = 'Ctrl+Alt+F{0}' -f $names.Count }
+        $presets += $preset
+    }
+    if ($names.Count -gt 1) {
+        $key = [Math]::Min($names.Count + 1, 24)
+        $presets += @{ Label = 'All displays'; Names = $names; Hotkey = 'Ctrl+Alt+F{0}' -f $key }
+    }
+    return @{ Monitors = $monitors; Presets = $presets }
 }
 
 function ConvertTo-DisplayFlipHotkey {

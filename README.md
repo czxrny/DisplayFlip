@@ -13,13 +13,17 @@ Install-Module DisplayConfig -Scope CurrentUser
 
 ## Setup
 
-1. Run `Show-Diagnostics.cmd` to list your displays and their `DevicePath` values.
-2. Edit `Monitors.psd1` to define your monitor identities, presets, hotkeys, and optional scaling. The included values describe the original setup; replace them before use. Use a full `DevicePath` if a model identifier matches multiple monitors.
-3. Run `Start-DisplayFlip.cmd` and right-click the tray icon to choose a preset.
+Before setting up the app, connect and activate all displays you want to use in Windows Settings > System > Display. Keep them active when you first launch DisplayFlip so it can discover their names and create the presets.
+
+Run `Start-DisplayFlip.cmd` and right-click the tray icon. The default `AutoConfigure = $true` reads `Get-DisplayInfo` objects at startup. No manual monitor configuration is required. After setup, use the presets to switch displays on and off.
+
+Each display gets an individual preset and Ctrl+Alt+F1, F2, etc. An additional "All displays" preset gets the next hotkey. Labels include a number to distinguish identical names; unnamed panels use "Display". Full device paths identify monitors independently of their names. Numbering follows device-path order and can change when hardware or ports change. Restart after connecting new hardware. Beyond 23 displays, additional individual presets are menu-only; F24 selects all displays.
+
+Automatic configuration leaves scaling unchanged. Run `Show-Diagnostics.cmd` to inspect detected displays. To customize presets, replace `Monitors.psd1` with an edited copy of `Monitors.Example.psd1`, which preserves the original setup. Custom mode supports arbitrary labels, combinations, hotkeys, and scaling.
 
 Keep `DisplayFlip.ps1`, `DisplayFlip.Hotkeys.cs`, `DisplayFlip.Configuration.ps1`, `Monitors.psd1`, and `icon.ico` together. The launchers and `Autostart.ps1` should remain in the same folder. `icon.png` is the source artwork for the tray icon.
 
-## Presets and hotkeys
+## Example custom presets and hotkeys
 
 | Preset | Hotkey |
 | --- | --- |
@@ -37,7 +41,7 @@ Each preset enables its target displays and disables the other configured displa
 
 ## Scaling
 
-An optional `Scale` value on each monitor sets its scaling percentage at startup and after selecting a preset containing that monitor. The supplied configuration sets LCD to 100%. Omit `Scale` to leave scaling unchanged. Disconnected or inactive displays are skipped. Windows must support the requested scaling percentage for that display. The app does not explicitly set resolution, refresh rate, position, or the primary display.
+An optional `Scale` value on each monitor sets its scaling percentage at startup and after selecting a preset containing that monitor. The example configuration sets LCD to 100%. Omit `Scale` to leave scaling unchanged. Disconnected or inactive displays are skipped. Windows must support the requested scaling percentage for that display. The app does not explicitly set resolution, refresh rate, position, or the primary display.
 
 ## Configuration
 
@@ -60,7 +64,7 @@ Monitor names are arbitrary keys shared by `Monitors` and preset `Names`. Preset
 
 `Hotkey` is optional; omit it or use an empty string for a menu-only preset. Supported keys are F1-F24 with optional Ctrl, Alt, Shift, and Win modifiers, for example `Ctrl+Shift+F8`. Modifier order and capitalization do not matter.
 
-`Scale` must be an integer from 100 to 500; actual supported percentages depend on the monitor and Windows. The supplied five presets preserve the original setup. There is no built-in limit of three monitors or five presets.
+`Scale` must be an integer from 100 to 500; actual supported percentages depend on the monitor and Windows. The five presets in Monitors.Example.psd1 preserve the original setup. There is no built-in limit of three monitors or five presets.
 
 ## Start with Windows
 
